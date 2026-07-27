@@ -1,8 +1,8 @@
 # mingo-mongo-mock
 
-MongoDB-driver-shaped in-memory mock database powered by [mingo](https://github.com/kofrasa/mingo).
+MongoDB-driver-shaped mock database for in-process JavaScript objects, powered by [mingo](https://github.com/kofrasa/mingo).
 
-Use this in tests when application code expects MongoDB-style collections, cursors, filters, updates, and aggregation pipelines, but you want the data to live in plain in-process JavaScript objects.
+Use this in tests when application code expects MongoDB-style collections, cursors, filters, updates, and aggregation pipelines, but you want the data to live in plain JavaScript objects in the same Node process.
 
 Query, projection, aggregation, and update semantics are delegated to mingo where possible. This is not a MongoDB server emulator.
 
@@ -17,14 +17,13 @@ pnpm add -D mingo-mongo-mock
 ```ts
 import { MockMongoDb } from 'mingo-mongo-mock'
 
-const db = new MockMongoDb({
-  users: [
-    { _id: 'u1', name: 'Alice', age: 30 },
-    { _id: 'u2', name: 'Bob', age: 17 },
-  ],
-})
-
+const db = new MockMongoDb()
 const users = db.collection('users')
+
+await users.insertMany([
+  { _id: 'u1', name: 'Alice', age: 30 },
+  { _id: 'u2', name: 'Bob', age: 17 },
+])
 
 const adults = await users
   .find({ age: { $gte: 18 } })
@@ -47,10 +46,10 @@ console.log(result.insertedId)
 Aggregation `$lookup` resolves other named collections from the same mock DB:
 
 ```ts
-const db = new MockMongoDb({
-  users: [{ _id: 'u1', name: 'Alice' }],
-  matches: [{ _id: 'm1', userIds: ['u1'] }],
-})
+const db = new MockMongoDb()
+
+await db.collection('users').insertOne({ _id: 'u1', name: 'Alice' })
+await db.collection('matches').insertOne({ _id: 'm1', userIds: ['u1'] })
 
 const matches = await db.collection('matches').aggregate([
   {
@@ -64,27 +63,26 @@ const matches = await db.collection('matches').aggregate([
 ]).toArray()
 ```
 
+Clear all mock data and indexes with the explicit test-helper method:
+
+```ts
+db.resetMock()
+```
+
 ## API
 
 ```ts
-new MockMongoDb(initialData?: InitialData)
+new MockMongoDb()
 ```
-
-`InitialData` is the starting database contents:
-
-```ts
-type InitialData = Record<string, object[]>
-```
-
-Each key is a collection name. Each value is that collection's initial documents.
 
 ### Database helpers
 
 - `db.collection<T>(name)`
-- `db.seed(initialData)`
-- `db.reset(initialData?)`
+- `db.resetMock()`
 - `db.getCollectionData<T>(name)`
 - `db.setCollectionData<T>(name, documents)`
+
+`getCollectionData` and `setCollectionData` are test helpers for inspecting or directly replacing a collection's backing object array.
 
 ### Supported collection methods
 

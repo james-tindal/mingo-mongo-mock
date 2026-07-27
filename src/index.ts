@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb'
 
 export type Document = object
 export type AnyDocument = Record<string, any>
-export type InitialData = Record<string, Document[]>
+type DatabaseData = Record<string, Document[]>
 export type Filter<T extends Document> = Partial<T> | Document
 export type Projection<T extends Document> = Partial<Record<keyof T | string, unknown>>
 export type Sort = Record<string, 1 | -1>
@@ -172,12 +172,8 @@ function ensureId<T extends Document>(document: T): T {
 }
 
 export class MockMongoDb {
-  #collections: InitialData = {}
+  #collections: DatabaseData = {}
   #indexes = new Map<string, UniqueIndex[]>()
-
-  constructor(seed: InitialData = {}) {
-    this.seed(seed)
-  }
 
   collection<T extends Document = AnyDocument>(name: string) {
     if (!this.#collections[name])
@@ -188,12 +184,9 @@ export class MockMongoDb {
     return new MockCollection<T>(name, this)
   }
 
-  seed(seed: InitialData) {
-    this.#collections = { ...seed }
-  }
-
-  reset(seed: InitialData = {}) {
-    this.seed(seed)
+  resetMock() {
+    this.#collections = {}
+    this.#indexes = new Map()
   }
 
   getCollectionData<T extends Document = AnyDocument>(name: string): T[] {

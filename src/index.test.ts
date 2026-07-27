@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import { MockMongoDb } from '.'
 
+function mockDb(data: Record<string, Document[]>) {
+  const db = new MockMongoDb()
+  for (const [name, documents] of Object.entries(data))
+    db.setCollectionData(name, documents)
+  return db
+}
+
 describe('mingo mongo mock', () => {
   test('finds documents with mongo query syntax', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 'alice', name: 'Alice', profile: { age: 30 }, tags: ['admin'] },
         { _id: 'bob', name: 'Bob', profile: { age: 17 }, tags: [] },
@@ -18,7 +25,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOne and cursor sort/skip/limit', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, name: 'Alice', age: 30 },
         { _id: 2, name: 'Bob', age: 40 },
@@ -40,7 +47,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('runs aggregate pipelines with lookup across named collections', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 'u1', name: 'Alice' },
         { _id: 'u2', name: 'Bob' },
@@ -67,7 +74,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('delegates updates to mingo, including positional updates', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       matches: [
         {
           _id: 'm1',
@@ -95,7 +102,7 @@ describe('mingo mongo mock', () => {
     ])
   })
 
-  test('inserts, deletes, and resets collection data', async () => {
+  test('inserts, deletes, and sets collection data', async () => {
     const db = new MockMongoDb()
     const users = db.collection('users')
 
@@ -103,8 +110,22 @@ describe('mingo mongo mock', () => {
     await expect(users.deleteOne({ name: 'Alice' })).resolves.toEqual({ acknowledged: true, deletedCount: 1 })
     expect(await users.find().toArray()).toMatchObject([{ name: 'Bob' }])
 
-    db.reset({ users: [{ _id: 3, name: 'Carol' }] })
+    db.setCollectionData('users', [{ _id: 3, name: 'Carol' }])
     expect(await users.find().toArray()).toMatchObject([{ name: 'Carol' }])
+  })
+
+  test('resetMock clears all collection data and indexes', async () => {
+    const db = new MockMongoDb()
+    const users = db.collection('users')
+
+    await users.createIndex({ email: 1 }, { unique: true })
+    await users.insertOne({ _id: 1, email: 'alice@example.com' })
+
+    db.resetMock()
+    expect(await users.find().toArray()).toEqual([])
+
+    await users.insertOne({ _id: 2, email: 'alice@example.com' })
+    await expect(users.insertOne({ _id: 3, email: 'alice@example.com' })).resolves.toMatchObject({ acknowledged: true })
   })
 
   test('generates an _id when insertOne receives a document without one', async () => {
@@ -132,7 +153,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports replaceOne', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, name: 'Alice', stale: true }],
     })
     const users = db.collection('users')
@@ -144,7 +165,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOneAndUpdate', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, name: 'Alice', count: 0 }],
     })
     const users = db.collection('users')
@@ -159,7 +180,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports countDocuments', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, active: true },
         { _id: 2, active: false },
@@ -172,7 +193,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports distinct', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, role: 'admin', active: true },
         { _id: 2, role: 'admin', active: false },
@@ -185,7 +206,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports async cursor iteration', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1 }, { _id: 2 }],
     })
 
@@ -207,7 +228,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('returns mongo-style update result fields only', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, name: 'Alice' }],
     })
 
@@ -220,7 +241,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports projection through find options', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, name: 'Alice', password: 'secret' }],
     })
 
@@ -231,7 +252,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports find options for sort, skip, limit, and projection', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, name: 'Alice', age: 30, password: 'a' },
         { _id: 2, name: 'Bob', age: 40, password: 'b' },
@@ -246,7 +267,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOne sort and projection options', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, name: 'Alice', age: 30, password: 'a' },
         { _id: 2, name: 'Bob', age: 40, password: 'b' },
@@ -274,7 +295,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOneAndUpdate before/after returnDocument, projection, and upsert options', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, name: 'Alice', count: 0, password: 'secret' }],
     })
     const users = db.collection('users')
@@ -293,7 +314,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes update options through for arrayFilters and sort', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, priority: 1, items: [{ status: 'pending' }, { status: 'done' }] },
         { _id: 2, priority: 2, items: [{ status: 'pending' }] },
@@ -332,7 +353,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports cursor next, hasNext, forEach, map, and close', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1 }, { _id: 2 }],
     })
 
@@ -352,7 +373,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('enforces compound unique indexes and rejects duplicate existing data when creating one', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, tenantId: 't1', email: 'alice@example.com' },
         { _id: 2, tenantId: 't1', email: 'alice@example.com' },
@@ -362,14 +383,14 @@ describe('mingo mongo mock', () => {
 
     await expect(users.createIndex({ tenantId: 1, email: 1 }, { unique: true })).rejects.toThrow()
 
-    db.reset({ users: [{ _id: 1, tenantId: 't1', email: 'alice@example.com' }] })
+    db.setCollectionData('users', [{ _id: 1, tenantId: 't1', email: 'alice@example.com' }])
     await users.createIndex({ tenantId: 1, email: 1 }, { unique: true })
     await expect(users.insertOne({ _id: 2, tenantId: 't1', email: 'alice@example.com' })).rejects.toThrow()
     await expect(users.insertOne({ _id: 3, tenantId: 't2', email: 'alice@example.com' })).resolves.toMatchObject({ acknowledged: true })
   })
 
   test('runs lookup with pipeline and let variables', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 'u1', name: 'Alice', active: true },
         { _id: 'u2', name: 'Bob', active: false },
@@ -398,7 +419,7 @@ describe('mingo mongo mock', () => {
   test('supports ObjectId equality through mingo', async () => {
     const { ObjectId } = await import('mongodb')
     const userId = new ObjectId()
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: userId, name: 'Alice' }],
     })
 
@@ -407,7 +428,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('does not expose mutable backing documents from query results', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, profile: { name: 'Alice' } }],
     })
 
@@ -419,7 +440,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo comparison, logical, element, evaluation, and array query operators', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [
         { _id: 1, name: 'Alice', age: 30, score: 32, tags: ['admin', 'player'], deletedAt: null },
         { _id: 2, name: 'Bob', age: 17, score: 9, tags: ['player'] },
@@ -444,7 +465,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo projection operators', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       posts: [{
         _id: 1,
         title: 'Post',
@@ -463,7 +484,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through common mingo aggregation stages and expressions', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       sales: [
         { _id: 1, region: 'north', rep: 'Alice', amount: 10, items: ['a', 'b'] },
         { _id: 2, region: 'north', rep: 'Bob', amount: 20, items: ['c'] },
@@ -485,7 +506,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo facet, bucket, sortByCount, count, and replaceRoot aggregation stages', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       sales: [
         { _id: 1, region: 'north', amount: 10, nested: { id: 'a', value: 1 } },
         { _id: 2, region: 'north', amount: 20, nested: { id: 'b', value: 2 } },
@@ -510,7 +531,7 @@ describe('mingo mongo mock', () => {
 
   // This fails because it fails in mingo. Fix PR submitted.
   test('passes through mingo update operators', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{
         _id: 1,
         name: 'Alice',
@@ -565,7 +586,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through aggregation pipeline updates', async () => {
-    const db = new MockMongoDb({
+    const db = mockDb({
       users: [{ _id: 1, first: 'Alice', last: 'Example', score: 10 }],
     })
 
