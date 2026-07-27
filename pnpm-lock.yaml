@@ -11,10 +11,10 @@ importers:
       mingo:
         specifier: ^7.2.2
         version: 7.2.2
-    devDependencies:
       mongodb:
         specifier: ^7.5.0
         version: 7.5.0
+    devDependencies:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
