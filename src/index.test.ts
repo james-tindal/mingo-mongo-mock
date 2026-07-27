@@ -417,4 +417,162 @@ describe('mingo mongo mock', () => {
     await expect(db.collection('users').findOne({ _id: 1 }))
       .resolves.toMatchObject({ profile: { name: 'Alice' } })
   })
+
+  test('passes through mingo comparison, logical, element, evaluation, and array query operators', async () => {
+    const db = createMingoMongoDb({
+      users: [
+        { _id: 1, name: 'Alice', age: 30, score: 12, tags: ['admin', 'player'], deletedAt: null },
+        { _id: 2, name: 'Bob', age: 17, score: 9, tags: ['player'] },
+        { _id: 3, name: 'Carol', age: 40, score: 20, tags: ['spectator'], deletedAt: new Date('2024-01-01') },
+      ],
+    })
+
+    await expect(db.collection('users').find({
+      $and: [
+        { age: { $gte: 18, $lt: 40 } },
+        { name: { $regex: /^a/i } },
+        { tags: { $all: ['admin', 'player'], $size: 2 } },
+        { deletedAt: { $type: 'null' } },
+        { score: { $mod: [5, 2] } },
+        { $expr: { $gt: ['$score', '$age'] } },
+      ],
+      $nor: [{ name: 'Bob' }],
+    }).toArray()).resolves.toMatchObject([{ _id: 1 }])
+
+    await expect(db.collection('users').find({ deletedAt: { $exists: false } }).toArray())
+      .resolves.toMatchObject([{ _id: 2 }])
+  })
+
+  test('passes through mingo projection operators', async () => {
+    const db = createMingoMongoDb({
+      posts: [{
+        _id: 1,
+        title: 'Post',
+        comments: [
+          { author: 'Alice', visible: false },
+          { author: 'Bob', visible: true },
+        ],
+        tags: ['one', 'two', 'three'],
+      }],
+    })
+
+    await expect(db.collection('posts').findOne(
+      { _id: 1 },
+      { projection: { title: 1, comments: { $elemMatch: { visible: true } }, tags: { $slice: 2 } } },
+    )).resolves.toEqual({ title: 'Post', comments: [{ author: 'Bob', visible: true }], tags: ['one', 'two'], _id: 1 })
+  })
+
+  test('passes through common mingo aggregation stages and expressions', async () => {
+    const db = createMingoMongoDb({
+      sales: [
+        { _id: 1, region: 'north', rep: 'Alice', amount: 10, items: ['a', 'b'] },
+        { _id: 2, region: 'north', rep: 'Bob', amount: 20, items: ['c'] },
+        { _id: 3, region: 'south', rep: 'Carol', amount: 15, items: [] },
+      ],
+    })
+
+    await expect(db.collection('sales').aggregate([
+      { $match: { amount: { $gte: 10 } } },
+      { $addFields: { doubled: { $multiply: ['$amount', 2] } } },
+      { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
+      { $group: { _id: '$region', total: { $sum: '$amount' }, reps: { $addToSet: '$rep' }, maxDouble: { $max: '$doubled' } } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, region: '$_id', total: 1, reps: 1, maxDouble: 1 } },
+    ]).toArray()).resolves.toEqual([
+      { region: 'north', total: 40, reps: ['Alice', 'Bob'], maxDouble: 40 },
+      { region: 'south', total: 15, reps: ['Carol'], maxDouble: 30 },
+    ])
+  })
+
+  test('passes through mingo facet, bucket, sortByCount, count, and replaceRoot aggregation stages', async () => {
+    const db = createMingoMongoDb({
+      sales: [
+        { _id: 1, region: 'north', amount: 10, nested: { id: 'a', value: 1 } },
+        { _id: 2, region: 'north', amount: 20, nested: { id: 'b', value: 2 } },
+        { _id: 3, region: 'south', amount: 35, nested: { id: 'c', value: 3 } },
+      ],
+    })
+
+    await expect(db.collection('sales').aggregate([
+      { $facet: {
+        counts: [{ $count: 'total' }],
+        buckets: [{ $bucket: { groupBy: '$amount', boundaries: [0, 20, 40], default: 'other', output: { count: { $sum: 1 } } } }],
+        regions: [{ $sortByCount: '$region' }],
+        roots: [{ $replaceRoot: { newRoot: '$nested' } }, { $sort: { id: 1 } }],
+      } },
+    ]).toArray()).resolves.toEqual([{
+      counts: [{ total: 3 }],
+      buckets: [{ _id: 0, count: 1 }, { _id: 20, count: 2 }],
+      regions: [{ _id: 'north', count: 2 }, { _id: 'south', count: 1 }],
+      roots: [{ id: 'a', value: 1 }, { id: 'b', value: 2 }, { id: 'c', value: 3 }],
+    }])
+  })
+
+  test('passes through mingo update operators', async () => {
+    const db = createMingoMongoDb({
+      users: [{
+        _id: 1,
+        name: 'Alice',
+        oldName: 'A',
+        count: 1,
+        score: 10,
+        tags: ['one'],
+        remove: true,
+        numbers: [1, 2, 3],
+        pullAll: ['a', 'b', 'c'],
+      }],
+    })
+
+    const result = await db.collection('users').updateOne(
+      { _id: 1 },
+      {
+        $inc: { count: 2 },
+        $mul: { score: 3 },
+        $min: { floor: 5 },
+        $max: { ceiling: 9 },
+        $addToSet: { tags: { $each: ['one', 'two'] } },
+        $push: { numbers: { $each: [4, 5], $slice: -3 } },
+        $pull: { tags: 'one' },
+        $pullAll: { pullAll: ['a', 'c'] },
+        $pop: { numbers: -1 },
+        $rename: { oldName: 'alias' },
+        $unset: { remove: '' },
+        $currentDate: { touchedAt: true },
+      },
+    )
+
+    expect(result).toMatchObject({ acknowledged: true, matchedCount: 1, modifiedCount: 1 })
+    const user = await db.collection('users').findOne({ _id: 1 })
+    expect(user).toMatchObject({
+      _id: 1,
+      name: 'Alice',
+      alias: 'A',
+      count: 3,
+      score: 30,
+      floor: 5,
+      ceiling: 9,
+      tags: ['two'],
+      numbers: [4, 5],
+      pullAll: ['b'],
+    })
+    expect(user).not.toHaveProperty('remove')
+    expect(user?.touchedAt).toBeInstanceOf(Date)
+  })
+
+  test('passes through aggregation pipeline updates', async () => {
+    const db = createMingoMongoDb({
+      users: [{ _id: 1, first: 'Alice', last: 'Example', score: 10 }],
+    })
+
+    await expect(db.collection('users').updateOne(
+      { _id: 1 },
+      [
+        { $set: { fullName: { $concat: ['$first', ' ', '$last'] }, doubledScore: { $multiply: ['$score', 2] } } },
+        { $unset: ['last'] },
+      ],
+    )).resolves.toMatchObject({ acknowledged: true, matchedCount: 1, modifiedCount: 1 })
+
+    await expect(db.collection('users').findOne({ _id: 1 }))
+      .resolves.toMatchObject({ first: 'Alice', fullName: 'Alice Example', doubledScore: 20 })
+  })
 })
