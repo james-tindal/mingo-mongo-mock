@@ -1,10 +1,10 @@
 # mingo-mongo-mock
 
-MongoDB-driver-shaped in-memory mock collections powered by [mingo](https://github.com/kofrasa/mingo).
+MongoDB-driver-shaped in-memory mock database powered by [mingo](https://github.com/kofrasa/mingo).
 
-This package is intended for tests that want to exercise code written against a small MongoDB collection API without starting MongoDB or `mongodb-memory-server`.
+Use this in tests when application code expects MongoDB-style collections, cursors, filters, updates, and aggregation pipelines, but you want the data to live in plain in-process JavaScript objects.
 
-It is **not** a full MongoDB server or a complete replacement for the official MongoDB Node driver. Query, aggregation, and update semantics are delegated to mingo.
+Query, projection, aggregation, and update semantics are delegated to mingo where possible. This is not a MongoDB server emulator.
 
 ## Install
 
@@ -15,9 +15,9 @@ pnpm add -D mingo-mongo-mock
 ## Usage
 
 ```ts
-import { createMingoMongoDb } from 'mingo-mongo-mock'
+import { MockMongoDb } from 'mingo-mongo-mock'
 
-const db = createMingoMongoDb({
+const db = new MockMongoDb({
   users: [
     { _id: 'u1', name: 'Alice', age: 30 },
     { _id: 'u2', name: 'Bob', age: 17 },
@@ -37,10 +37,17 @@ await users.updateOne(
 )
 ```
 
-Aggregation `$lookup` can resolve other named collections from the same mock DB:
+Documents inserted without `_id` get a MongoDB `ObjectId`:
 
 ```ts
-const db = createMingoMongoDb({
+const result = await users.insertOne({ name: 'Carol' })
+console.log(result.insertedId)
+```
+
+Aggregation `$lookup` resolves other named collections from the same mock DB:
+
+```ts
+const db = new MockMongoDb({
   users: [{ _id: 'u1', name: 'Alice' }],
   matches: [{ _id: 'm1', userIds: ['u1'] }],
 })
@@ -60,34 +67,75 @@ const matches = await db.collection('matches').aggregate([
 ## API
 
 ```ts
-createMingoMongoDb(seed?: Record<string, object[]>): MingoMongoDb
+new MockMongoDb(initialData?: InitialData)
 ```
 
-Supported collection methods in the initial API:
+`InitialData` is the starting database contents:
 
-- `find(filter?, projectionOrOptions?).sort(...).skip(...).limit(...).toArray()`
+```ts
+type InitialData = Record<string, object[]>
+```
+
+Each key is a collection name. Each value is that collection's initial documents.
+
+### Database helpers
+
+- `db.collection<T>(name)`
+- `db.seed(initialData)`
+- `db.reset(initialData?)`
+- `db.getCollectionData<T>(name)`
+- `db.setCollectionData<T>(name, documents)`
+
+### Supported collection methods
+
+- `find(filter?, projectionOrOptions?)`
 - `findOne(filter?, projectionOrOptions?)`
-- `aggregate(pipeline).toArray()`
+- `aggregate(pipeline?)`
 - `insertOne(document)`
-- `insertMany(documents)`
-- `updateOne(filter, update)`
-- `updateMany(filter, update)`
+- `insertMany(documents, options?)`
+- `updateOne(filter, update, options?)`
+- `updateMany(filter, update, options?)`
+- `replaceOne(filter, replacement, options?)`
+- `findOneAndUpdate(filter, update, options?)`
 - `deleteOne(filter)`
 - `deleteMany(filter)`
-- `createIndex()` no-op for compatibility
+- `countDocuments(filter?)`
+- `distinct(path, filter?)`
+- `createIndex(spec, options?)`
 
-Mock DB helpers:
+`createIndex` supports unique indexes, including compound unique indexes, for duplicate-key checks in tests.
 
-- `db.collection(name)`
-- `db.seed(seed)`
-- `db.reset(seed?)`
-- `db.getCollectionData(name)`
-- `db.setCollectionData(name, documents)`
+### Supported find cursor methods
+
+- `sort(sort)`
+- `skip(count)`
+- `limit(count)`
+- `map(fn)`
+- `toArray()`
+- `next()`
+- `hasNext()`
+- `forEach(fn)`
+- `close()`
+- async iteration with `for await`
+
+### Supported aggregation cursor methods
+
+- `toArray()`
+
+## Notes
+
+- Mongo query, projection, aggregation, and update operator behavior comes from mingo.
+- `ObjectId` comes from the official `mongodb` package.
+- Query results are cloned so mutating returned objects does not mutate stored documents.
+- This package is intended for tests, not production persistence.
+
+Known boundary: `mingo@7.2.2` currently has a `$rename` update bug; a fix PR has been submitted upstream.
 
 ## Development
 
 ```sh
 pnpm install
+pnpm typecheck
 pnpm test
 pnpm build
 pnpm pack --dry-run
