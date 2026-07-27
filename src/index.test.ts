@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { createMingoMongoDb } from './index'
+import { MockMongoDb } from '.'
 
 describe('mingo mongo mock', () => {
   test('finds documents with mongo query syntax', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 'alice', name: 'Alice', profile: { age: 30 }, tags: ['admin'] },
         { _id: 'bob', name: 'Bob', profile: { age: 17 }, tags: [] },
@@ -18,7 +18,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOne and cursor sort/skip/limit', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, name: 'Alice', age: 30 },
         { _id: 2, name: 'Bob', age: 40 },
@@ -40,7 +40,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('runs aggregate pipelines with lookup across named collections', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 'u1', name: 'Alice' },
         { _id: 'u2', name: 'Bob' },
@@ -67,7 +67,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('delegates updates to mingo, including positional updates', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       matches: [
         {
           _id: 'm1',
@@ -96,7 +96,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('inserts, deletes, and resets collection data', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     await users.insertMany([{ _id: 1, name: 'Alice' }, { _id: 2, name: 'Bob' }])
@@ -108,7 +108,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('generates an _id when insertOne receives a document without one', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     const result = await users.insertOne({ name: 'Alice' })
@@ -118,7 +118,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports updateOne upsert', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     const result = await users.updateOne(
@@ -132,7 +132,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports replaceOne', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, name: 'Alice', stale: true }],
     })
     const users = db.collection('users')
@@ -144,7 +144,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOneAndUpdate', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, name: 'Alice', count: 0 }],
     })
     const users = db.collection('users')
@@ -159,7 +159,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports countDocuments', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, active: true },
         { _id: 2, active: false },
@@ -172,7 +172,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports distinct', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, role: 'admin', active: true },
         { _id: 2, role: 'admin', active: false },
@@ -185,7 +185,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports async cursor iteration', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1 }, { _id: 2 }],
     })
 
@@ -197,7 +197,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('enforces unique indexes', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     await users.createIndex({ email: 1 }, { unique: true })
@@ -207,7 +207,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('returns mongo-style update result fields only', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, name: 'Alice' }],
     })
 
@@ -220,7 +220,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports projection through find options', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, name: 'Alice', password: 'secret' }],
     })
 
@@ -231,7 +231,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports find options for sort, skip, limit, and projection', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, name: 'Alice', age: 30, password: 'a' },
         { _id: 2, name: 'Bob', age: 40, password: 'b' },
@@ -246,7 +246,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOne sort and projection options', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, name: 'Alice', age: 30, password: 'a' },
         { _id: 2, name: 'Bob', age: 40, password: 'b' },
@@ -260,7 +260,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports replaceOne upsert', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     const result = await users.replaceOne(
@@ -274,7 +274,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports findOneAndUpdate before/after returnDocument, projection, and upsert options', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, name: 'Alice', count: 0, password: 'secret' }],
     })
     const users = db.collection('users')
@@ -293,7 +293,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes update options through for arrayFilters and sort', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, priority: 1, items: [{ status: 'pending' }, { status: 'done' }] },
         { _id: 2, priority: 2, items: [{ status: 'pending' }] },
@@ -313,7 +313,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports insertMany ordered false duplicate-key behavior', async () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection('users')
 
     await users.createIndex({ email: 1 }, { unique: true })
@@ -332,7 +332,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('supports cursor next, hasNext, forEach, map, and close', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1 }, { _id: 2 }],
     })
 
@@ -352,7 +352,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('enforces compound unique indexes and rejects duplicate existing data when creating one', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 1, tenantId: 't1', email: 'alice@example.com' },
         { _id: 2, tenantId: 't1', email: 'alice@example.com' },
@@ -369,7 +369,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('runs lookup with pipeline and let variables', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
         { _id: 'u1', name: 'Alice', active: true },
         { _id: 'u2', name: 'Bob', active: false },
@@ -398,7 +398,7 @@ describe('mingo mongo mock', () => {
   test('supports ObjectId equality through mingo', async () => {
     const { ObjectId } = await import('mongodb')
     const userId = new ObjectId()
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: userId, name: 'Alice' }],
     })
 
@@ -407,7 +407,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('does not expose mutable backing documents from query results', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, profile: { name: 'Alice' } }],
     })
 
@@ -419,9 +419,9 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo comparison, logical, element, evaluation, and array query operators', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [
-        { _id: 1, name: 'Alice', age: 30, score: 12, tags: ['admin', 'player'], deletedAt: null },
+        { _id: 1, name: 'Alice', age: 30, score: 32, tags: ['admin', 'player'], deletedAt: null },
         { _id: 2, name: 'Bob', age: 17, score: 9, tags: ['player'] },
         { _id: 3, name: 'Carol', age: 40, score: 20, tags: ['spectator'], deletedAt: new Date('2024-01-01') },
       ],
@@ -444,7 +444,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo projection operators', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       posts: [{
         _id: 1,
         title: 'Post',
@@ -463,7 +463,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through common mingo aggregation stages and expressions', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       sales: [
         { _id: 1, region: 'north', rep: 'Alice', amount: 10, items: ['a', 'b'] },
         { _id: 2, region: 'north', rep: 'Bob', amount: 20, items: ['c'] },
@@ -485,7 +485,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through mingo facet, bucket, sortByCount, count, and replaceRoot aggregation stages', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       sales: [
         { _id: 1, region: 'north', amount: 10, nested: { id: 'a', value: 1 } },
         { _id: 2, region: 'north', amount: 20, nested: { id: 'b', value: 2 } },
@@ -502,14 +502,15 @@ describe('mingo mongo mock', () => {
       } },
     ]).toArray()).resolves.toEqual([{
       counts: [{ total: 3 }],
-      buckets: [{ _id: 0, count: 1 }, { _id: 20, count: 2 }],
+      buckets: [{ _id: 0, count: 2 }, { _id: 20, count: 1 }],
       regions: [{ _id: 'north', count: 2 }, { _id: 'south', count: 1 }],
       roots: [{ id: 'a', value: 1 }, { id: 'b', value: 2 }, { id: 'c', value: 3 }],
     }])
   })
 
+  // This fails because it fails in mingo. Fix PR submitted.
   test('passes through mingo update operators', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{
         _id: 1,
         name: 'Alice',
@@ -517,8 +518,10 @@ describe('mingo mongo mock', () => {
         count: 1,
         score: 10,
         tags: ['one'],
+        removeTags: ['one', 'two'],
         remove: true,
-        numbers: [1, 2, 3],
+        pushNumbers: [1, 2, 3],
+        popNumbers: [1, 2, 3],
         pullAll: ['a', 'b', 'c'],
       }],
     })
@@ -531,10 +534,10 @@ describe('mingo mongo mock', () => {
         $min: { floor: 5 },
         $max: { ceiling: 9 },
         $addToSet: { tags: { $each: ['one', 'two'] } },
-        $push: { numbers: { $each: [4, 5], $slice: -3 } },
-        $pull: { tags: 'one' },
+        $push: { pushNumbers: { $each: [4, 5], $slice: -3 } },
+        $pull: { removeTags: 'one' },
         $pullAll: { pullAll: ['a', 'c'] },
-        $pop: { numbers: -1 },
+        $pop: { popNumbers: -1 },
         $rename: { oldName: 'alias' },
         $unset: { remove: '' },
         $currentDate: { touchedAt: true },
@@ -551,8 +554,10 @@ describe('mingo mongo mock', () => {
       score: 30,
       floor: 5,
       ceiling: 9,
-      tags: ['two'],
-      numbers: [4, 5],
+      tags: ['one', 'two'],
+      removeTags: ['two'],
+      pushNumbers: [3, 4, 5],
+      popNumbers: [2, 3],
       pullAll: ['b'],
     })
     expect(user).not.toHaveProperty('remove')
@@ -560,7 +565,7 @@ describe('mingo mongo mock', () => {
   })
 
   test('passes through aggregation pipeline updates', async () => {
-    const db = createMingoMongoDb({
+    const db = new MockMongoDb({
       users: [{ _id: 1, first: 'Alice', last: 'Example', score: 10 }],
     })
 

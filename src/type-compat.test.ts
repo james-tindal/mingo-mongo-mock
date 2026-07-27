@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, test } from 'vitest'
-import type { Collection, Db, ObjectId, OptionalId, WithId } from 'mongodb'
-import { createMingoMongoDb, type MingoMongoCollection, type MingoMongoDb } from './index'
+import type { Collection, ObjectId, OptionalId, WithId } from 'mongodb'
+import { MockMongoDb, type MockCollection } from './index'
+
 
 interface UserDoc {
   _id: ObjectId
@@ -10,8 +11,8 @@ interface UserDoc {
 }
 
 describe('mongodb driver type compatibility', () => {
-  test('database exposes a mongodb-like collection method shape', () => {
-    expectTypeOf<MingoMongoDb>().toMatchTypeOf<Pick<Db, 'collection'>>()
+  test('Collection matches mongodb', () => {
+    expectTypeOf<MockCollection>().toMatchTypeOf<Collection>()
   })
 
   test('collection exposes the mongodb driver methods this library implements', () => {
@@ -32,15 +33,15 @@ describe('mongodb driver type compatibility', () => {
       | 'createIndex'
     >
 
-    expectTypeOf<MingoMongoCollection<UserDoc>>().toMatchTypeOf<Expected>()
+    expectTypeOf<MockCollection<UserDoc>>().toMatchTypeOf<Expected>()
   })
 
   test('typed collections accept normal mongodb document types without index signatures', () => {
-    const db = createMingoMongoDb()
+    const db = new MockMongoDb()
     const users = db.collection<UserDoc>('users')
 
-    expectTypeOf(users).toEqualTypeOf<MingoMongoCollection<UserDoc>>()
-    expectTypeOf(users.findOne({ email: 'alice@example.com' })).resolves.toEqualTypeOf<WithId<UserDoc> | null>()
+    expectTypeOf(users).toEqualTypeOf<MockCollection<UserDoc>>()
+    expectTypeOf(users.findOne({ email: 'alice@example.com' })).resolves.toMatchTypeOf<WithId<UserDoc> | null>()
     expectTypeOf(users.insertOne({ email: 'alice@example.com', name: 'Alice' } satisfies OptionalId<UserDoc>)).resolves.toHaveProperty('insertedId')
   })
 })

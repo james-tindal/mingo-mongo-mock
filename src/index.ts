@@ -1,18 +1,16 @@
-import {
-  aggregate as mingoAggregate,
-  find as mingoFind,
-  update as mingoUpdate,
-  updateMany as mingoUpdateMany,
-  updateOne as mingoUpdateOne,
-} from 'mingo'
+import mingo from 'mingo'
 import { ObjectId } from 'mongodb'
 
 export type Document = object
-export type CollectionSeed = Record<string, Document[]>
+export type AnyDocument = Record<string, any>
+export type InitialData = Record<string, Document[]>
 export type Filter<T extends Document> = Partial<T> | Document
-export type Projection<T extends Document> = Partial<Record<keyof T | string, 0 | 1 | boolean>>
+export type Projection<T extends Document> = Partial<Record<keyof T | string, unknown>>
 export type Sort = Record<string, 1 | -1>
 export type Update = Document | Document[]
+type Insertable<T extends Document> = T extends { _id: unknown }
+  ? Omit<T, '_id'> & Partial<Pick<T, '_id'>>
+  : T
 
 export interface InsertOneResult {
   acknowledged: true
@@ -54,10 +52,6 @@ type WriteOptions = {
 type IndexSpec = Record<string, 1 | -1>
 type IndexOptions = { unique?: boolean; name?: string }
 type UniqueIndex = { spec: IndexSpec; name: string }
-
-export function createMingoMongoDb(seed: CollectionSeed = {}) {
-  return new MingoMongoDb(seed)
-}
 
 function isFindOptions<T extends Document>(value: FindOptions<T> | Projection<T>): value is FindOptions<T> {
   return Object.hasOwn(value, 'projection') || Object.hasOwn(value, 'sort') ||
@@ -151,7 +145,7 @@ function createUpsertDocument<T extends Document>(filter: Filter<T>, update: Upd
       setByPath(document, key, clone(value))
 
   if (Array.isArray(update)) {
-    const [updated] = mingoAggregate([document] as never, update as never)
+    const [updated] = mingo.aggregate([document] as never, update as never)
     return ensureId(updated as T)
   }
 
@@ -177,39 +171,39 @@ function ensureId<T extends Document>(document: T): T {
   return doc
 }
 
-export class MingoMongoDb {
-  #collections: CollectionSeed = {}
+export class MockMongoDb {
+  #collections: InitialData = {}
   #indexes = new Map<string, UniqueIndex[]>()
 
-  constructor(seed: CollectionSeed = {}) {
+  constructor(seed: InitialData = {}) {
     this.seed(seed)
   }
 
-  collection<T extends Document = Document>(name: string) {
+  collection<T extends Document = AnyDocument>(name: string) {
     if (!this.#collections[name])
       this.#collections[name] = []
     if (!this.#indexes.has(name))
       this.#indexes.set(name, [])
 
-    return new MingoMongoCollection<T>(name, this)
+    return new MockCollection<T>(name, this)
   }
 
-  seed(seed: CollectionSeed) {
+  seed(seed: InitialData) {
     this.#collections = { ...seed }
   }
 
-  reset(seed: CollectionSeed = {}) {
+  reset(seed: InitialData = {}) {
     this.seed(seed)
   }
 
-  getCollectionData<T extends Document = Document>(name: string): T[] {
+  getCollectionData<T extends Document = AnyDocument>(name: string): T[] {
     if (!this.#collections[name])
       this.#collections[name] = []
 
     return this.#collections[name] as T[]
   }
 
-  setCollectionData<T extends Document = Document>(name: string, documents: T[]) {
+  setCollectionData<T extends Document = AnyDocument>(name: string, documents: T[]) {
     this.#collections[name] = documents
   }
 
@@ -224,19 +218,19 @@ export class MingoMongoDb {
   }
 }
 
-export class MingoMongoCollection<T extends Document = Document> {
+export class MockCollection<T extends Document = AnyDocument> {
   constructor(
     private readonly name: string,
-    private readonly db: MingoMongoDb,
+    private readonly db: MockMongoDb,
   ) {}
 
-  get documents() {
+  private get documents() {
     return this.db.getCollectionData<T>(this.name)
   }
 
   find(filter: Filter<T> = {}, optionsOrProjection: FindOptions<T> | Projection<T> = {}) {
     const options = normalizeOptions(optionsOrProjection)
-    const cursor = new MingoMongoFindCursor(this.documents, filter, options.projection)
+    const cursor = new FindCursor(this.documents, filter, options.projection)
 
     if (options.sort)
       cursor.sort(options.sort)
@@ -248,23 +242,23 @@ export class MingoMongoCollection<T extends Document = Document> {
     return cursor
   }
 
-  async findOne(filter: Filter<T> = {}, optionsOrProjection: FindOptions<T> | Projection<T> = {}) {
+  async findOne(filter: Filter<T> = {}, optionsOrProjection: FindOptions<T> | Projection<T> = {}): Promise<T | null> {
     const [document] = await this.find(filter, optionsOrProjection).limit(1).toArray()
     return document ?? null
   }
 
   aggregate<R extends Document = Document>(pipeline: Document[] = []) {
-    return new MingoMongoAggregationCursor<R>(this.documents, pipeline, this.db)
+    return new AggregationCursor<R>(this.documents, pipeline, this.db)
   }
 
-  async insertOne(document: T): Promise<InsertOneResult> {
-    const inserted = ensureId(document)
+  async insertOne(document: Insertable<T>): Promise<InsertOneResult> {
+    const inserted = ensureId(document as T)
     this.assertNoUniqueIndexViolation(inserted)
     this.documents.push(inserted)
     return { acknowledged: true, insertedId: (inserted as { _id: unknown })._id }
   }
 
-  async insertMany(documents: T[], options: { ordered?: boolean } = {}): Promise<InsertManyResult> {
+  async insertMany(documents: Insertable<T>[], options: { ordered?: boolean } = {}): Promise<InsertManyResult> {
     const insertedIds: Record<number, unknown> = {}
     let insertedCount = 0
     let firstError: unknown
@@ -288,7 +282,7 @@ export class MingoMongoCollection<T extends Document = Document> {
   }
 
   async updateOne(filter: Filter<T>, update: Update, options: WriteOptions = {}): Promise<UpdateResult> {
-    const result = mingoUpdateOne(this.documents as never, filter as never, update as never, {
+    const result = mingo.updateOne(this.documents as never, filter as never, update as never, {
       arrayFilters: options.arrayFilters,
       sort: options.sort,
     } as never)
@@ -310,14 +304,14 @@ export class MingoMongoCollection<T extends Document = Document> {
   }
 
   async updateMany(filter: Filter<T>, update: Update, options: Pick<WriteOptions, 'arrayFilters'> = {}): Promise<UpdateResult> {
-    const result = mingoUpdateMany(this.documents as never, filter as never, update as never, {
+    const result = mingo.updateMany(this.documents as never, filter as never, update as never, {
       arrayFilters: options.arrayFilters,
     } as never)
     return updateResult(result)
   }
 
   async replaceOne(filter: Filter<T>, replacement: T, options: Pick<WriteOptions, 'upsert'> = {}): Promise<UpdateResult> {
-    const [match] = mingoFind<T, T>(this.documents, filter as never).limit(1).all()
+    const [match] = mingo.find<T, T>(this.documents, filter as never).limit(1).all()
 
     if (!match) {
       if (!options.upsert)
@@ -365,7 +359,7 @@ export class MingoMongoCollection<T extends Document = Document> {
   }
 
   async deleteOne(filter: Filter<T>): Promise<DeleteResult> {
-    const [match] = mingoFind<T, T>(this.documents, filter as never).limit(1).all()
+    const [match] = mingo.find<T, T>(this.documents, filter as never).limit(1).all()
     if (!match)
       return { acknowledged: true, deletedCount: 0 }
 
@@ -378,7 +372,7 @@ export class MingoMongoCollection<T extends Document = Document> {
   }
 
   async deleteMany(filter: Filter<T>): Promise<DeleteResult> {
-    const matches = new Set(mingoFind<T, T>(this.documents, filter as never).all())
+    const matches = new Set(mingo.find<T, T>(this.documents, filter as never).all())
     const originalLength = this.documents.length
     const kept = this.documents.filter(document => !matches.has(document))
     this.db.setCollectionData(this.name, kept)
@@ -390,14 +384,14 @@ export class MingoMongoCollection<T extends Document = Document> {
   }
 
   async countDocuments(filter: Filter<T> = {}) {
-    return mingoFind<T, T>(this.documents, filter as never).all().length
+    return mingo.find<T, T>(this.documents, filter as never).all().length
   }
 
   async distinct(path: string, filter: Filter<T> = {}) {
     const values: unknown[] = []
     const seen = new Set<string>()
 
-    for (const document of mingoFind<T, T>(this.documents, filter as never).all()) {
+    for (const document of mingo.find<T, T>(this.documents, filter as never).all()) {
       const value = getByPath(document, path)
       const candidates = Array.isArray(value) ? value : [value]
       for (const candidate of candidates) {
@@ -443,10 +437,10 @@ function projectOne<T extends Document>(document: T, projection?: Projection<T>)
   if (!projection)
     return clone(document)
 
-  return mingoFind<T, T>([document], {}, projection as never).all()[0] ?? null
+  return mingo.find<T, T>([document], {}, projection as never).all()[0] ?? null
 }
 
-export class MingoMongoFindCursor<T extends Document = Document> {
+export class FindCursor<T extends Document = AnyDocument> {
   #sort?: Sort
   #skip = 0
   #limit?: number
@@ -480,18 +474,18 @@ export class MingoMongoFindCursor<T extends Document = Document> {
   }
 
   map<R>(mapper: (document: T) => R) {
-    const cursor = new MingoMongoFindCursor<T>(this.documents, this.filter, this.projection)
+    const cursor = new FindCursor<T>(this.documents, this.filter, this.projection)
     cursor.#sort = this.#sort
     cursor.#skip = this.#skip
     cursor.#limit = this.#limit
     cursor.#mapper = mapper
-    return cursor as unknown as MingoMongoFindCursor<R & Document>
+    return cursor as unknown as FindCursor<R & Document>
   }
 
-  async toArray() {
+  async toArray(): Promise<T[]> {
     const documents = this.evaluate().slice(this.#index)
     this.#index = this.evaluate().length
-    return documents.map(document => this.#mapper ? this.#mapper(document) : clone(document))
+    return documents.map(document => this.#mapper ? this.#mapper(document) : clone(document)) as T[]
   }
 
   async next() {
@@ -508,7 +502,7 @@ export class MingoMongoFindCursor<T extends Document = Document> {
     return !this.#closed && this.#index < this.evaluate().length
   }
 
-  async forEach(callback: (document: T) => void | Promise<void>) {
+  async forEach(callback: (document: T) => unknown | Promise<unknown>) {
     while (await this.hasNext()) {
       const document = await this.next()
       if (document)
@@ -532,7 +526,7 @@ export class MingoMongoFindCursor<T extends Document = Document> {
     if (this.#buffer)
       return this.#buffer
 
-    let cursor = mingoFind<T, T>(this.documents, this.filter as never, this.projection as never)
+    let cursor = mingo.find<T, T>(this.documents, this.filter as never, this.projection as never)
 
     if (this.#sort)
       cursor = cursor.sort(this.#sort)
@@ -546,15 +540,15 @@ export class MingoMongoFindCursor<T extends Document = Document> {
   }
 }
 
-export class MingoMongoAggregationCursor<T extends Document = Document> {
+export class AggregationCursor<T extends Document = AnyDocument> {
   constructor(
     private readonly documents: Document[],
     private readonly pipeline: Document[],
-    private readonly db: MingoMongoDb,
+    private readonly db: MockMongoDb,
   ) {}
 
   async toArray() {
-    return clone(mingoAggregate(this.documents as never, this.pipeline as never, {
+    return clone(mingo.aggregate(this.documents as never, this.pipeline as never, {
       collectionResolver: name => this.db.getCollectionData(name),
     }) as T[])
   }
