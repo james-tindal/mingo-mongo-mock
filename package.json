@@ -8,22 +8,35 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "readme.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "mongo",
+    "mongodb",
+    "mock",
+    "mingo",
+    "test",
+    "in-memory"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "mingo": "^7.2.2"
   },
   "devDependencies": {
-    "@types/node": "^25.0.0",
-    "typescript": "^6.0.0",
-    "vitest": "^4.0.0"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
