@@ -226,7 +226,7 @@ export class MockCollection<T extends object = Record<string, unknown>> {
     return document ?? null
   }
 
-  aggregate<R extends object = object>(pipeline: object[] = []) {
+  aggregate<R = T>(pipeline: object[] = []) {
     return new AggregationCursor<R>(this.documents, pipeline, this.db)
   }
 
