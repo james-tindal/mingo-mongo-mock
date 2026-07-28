@@ -1,14 +1,15 @@
 import mingo from 'mingo'
 import { ObjectId } from 'mongodb'
+import { AggregationCursor } from './AggregationCursor'
+import { clone } from './misc'
 
-export type Document = object
-export type AnyDocument = Record<string, any>
-type DatabaseData = Record<string, Document[]>
-export type Filter<T extends Document> = Partial<T> | Document
-export type Projection<T extends Document> = Partial<Record<keyof T | string, unknown>>
+
+type DatabaseData = Record<string, object[]>
+export type Filter<T extends object> = Partial<T> | object
+export type Projection<T extends object> = Partial<Record<keyof T | string, unknown>>
 export type Sort = Record<string, 1 | -1>
-export type Update = Document | Document[]
-type Insertable<T extends Document> = T extends { _id: unknown }
+export type Update = object | object[]
+type Insertable<T extends object> = T extends { _id: unknown }
   ? Omit<T, '_id'> & Partial<Pick<T, '_id'>>
   : T
 
@@ -36,7 +37,7 @@ export interface UpdateResult {
   upsertedId?: unknown
 }
 
-type FindOptions<T extends Document> = {
+type FindOptions<T extends object> = {
   projection?: Projection<T>
   sort?: Sort
   skip?: number
@@ -45,7 +46,7 @@ type FindOptions<T extends Document> = {
 
 type WriteOptions = {
   upsert?: boolean
-  arrayFilters?: Document[]
+  arrayFilters?: object[]
   sort?: Sort
 }
 
@@ -53,24 +54,9 @@ type IndexSpec = Record<string, 1 | -1>
 type IndexOptions = { unique?: boolean; name?: string }
 type UniqueIndex = { spec: IndexSpec; name: string }
 
-function isFindOptions<T extends Document>(value: FindOptions<T> | Projection<T>): value is FindOptions<T> {
+function isFindOptions<T extends object>(value: FindOptions<T> | Projection<T>): value is FindOptions<T> {
   return Object.hasOwn(value, 'projection') || Object.hasOwn(value, 'sort') ||
     Object.hasOwn(value, 'skip') || Object.hasOwn(value, 'limit')
-}
-
-function clone<T>(value: T): T {
-  if (value instanceof ObjectId)
-    return new ObjectId(value.id) as T
-  if (value instanceof Date)
-    return new Date(value) as T
-  if (Array.isArray(value))
-    return value.map(item => clone(item)) as T
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, clone(item)])
-    ) as T
-
-  return value
 }
 
 function getByPath(document: unknown, path: string) {
@@ -81,7 +67,7 @@ function getByPath(document: unknown, path: string) {
   }, document)
 }
 
-function setByPath(document: Document, path: string, value: unknown) {
+function setByPath(document: object, path: string, value: unknown) {
   const parts = path.split('.')
   let target = document as Record<string, unknown>
 
@@ -94,7 +80,7 @@ function setByPath(document: Document, path: string, value: unknown) {
   target[parts.at(-1)!] = value
 }
 
-function deleteByPath(document: Document, path: string) {
+function deleteByPath(document: object, path: string) {
   const parts = path.split('.')
   let target = document as Record<string, unknown>
 
@@ -113,7 +99,7 @@ function keyFor(value: unknown) {
   return JSON.stringify(value)
 }
 
-function uniqueKey(document: Document, spec: IndexSpec) {
+function uniqueKey(document: object, spec: IndexSpec) {
   return Object.keys(spec).map(path => keyFor(getByPath(document, path))).join('\u0000')
 }
 
@@ -123,7 +109,7 @@ function mongoDuplicateKeyError(indexName: string) {
   return error
 }
 
-function normalizeOptions<T extends Document>(optionsOrProjection: FindOptions<T> | Projection<T> = {}): FindOptions<T> {
+function normalizeOptions<T extends object>(optionsOrProjection: FindOptions<T> | Projection<T> = {}): FindOptions<T> {
   return isFindOptions(optionsOrProjection)
     ? optionsOrProjection
     : { projection: optionsOrProjection }
@@ -137,8 +123,8 @@ function updateResult(result: { matchedCount: number; modifiedCount: number }): 
   }
 }
 
-function createUpsertDocument<T extends Document>(filter: Filter<T>, update: Update): T {
-  const document: Document = {}
+function createUpsertDocument<T extends object>(filter: Filter<T>, update: Update): T {
+  const document: object = {}
 
   for (const [key, value] of Object.entries(filter))
     if (!key.startsWith('$') && typeof value !== 'object')
@@ -152,8 +138,8 @@ function createUpsertDocument<T extends Document>(filter: Filter<T>, update: Upd
   const modifierKeys = Object.keys(update)
   const isModifier = modifierKeys.some(key => key.startsWith('$'))
   if (isModifier) {
-    const setOnInsert = (update as { $setOnInsert?: Document }).$setOnInsert ?? {}
-    const set = (update as { $set?: Document }).$set ?? {}
+    const setOnInsert = (update as { $setOnInsert?: object }).$setOnInsert ?? {}
+    const set = (update as { $set?: object }).$set ?? {}
     for (const [key, value] of Object.entries(setOnInsert))
       setByPath(document, key, clone(value))
     for (const [key, value] of Object.entries(set))
@@ -164,7 +150,7 @@ function createUpsertDocument<T extends Document>(filter: Filter<T>, update: Upd
   return ensureId(clone(update as T))
 }
 
-function ensureId<T extends Document>(document: T): T {
+function ensureId<T extends object>(document: T): T {
   const doc = document as T & { _id?: unknown }
   if (doc._id === undefined)
     doc._id = new ObjectId()
@@ -175,7 +161,7 @@ export class MockMongoDb {
   #collections: DatabaseData = {}
   #indexes = new Map<string, UniqueIndex[]>()
 
-  collection<T extends Document = AnyDocument>(name: string) {
+  collection<T extends object = Record<string, unknown>>(name: string) {
     if (!this.#collections[name])
       this.#collections[name] = []
     if (!this.#indexes.has(name))
@@ -189,14 +175,14 @@ export class MockMongoDb {
     this.#indexes = new Map()
   }
 
-  getCollectionData<T extends Document = AnyDocument>(name: string): T[] {
+  getCollectionData<T extends object = Record<string, unknown>>(name: string): T[] {
     if (!this.#collections[name])
       this.#collections[name] = []
 
     return this.#collections[name] as T[]
   }
 
-  setCollectionData<T extends Document = AnyDocument>(name: string, documents: T[]) {
+  setCollectionData<T extends object = Record<string, unknown>>(name: string, documents: T[]) {
     this.#collections[name] = documents
   }
 
@@ -211,7 +197,7 @@ export class MockMongoDb {
   }
 }
 
-export class MockCollection<T extends Document = AnyDocument> {
+export class MockCollection<T extends object = Record<string, unknown>> {
   constructor(
     private readonly name: string,
     private readonly db: MockMongoDb,
@@ -240,7 +226,7 @@ export class MockCollection<T extends Document = AnyDocument> {
     return document ?? null
   }
 
-  aggregate<R extends Document = Document>(pipeline: Document[] = []) {
+  aggregate<R extends object = object>(pipeline: object[] = []) {
     return new AggregationCursor<R>(this.documents, pipeline, this.db)
   }
 
@@ -426,14 +412,14 @@ export class MockCollection<T extends Document = AnyDocument> {
   }
 }
 
-function projectOne<T extends Document>(document: T, projection?: Projection<T>) {
+function projectOne<T extends object>(document: T, projection?: Projection<T>) {
   if (!projection)
     return clone(document)
 
   return mingo.find<T, T>([document], {}, projection as never).all()[0] ?? null
 }
 
-export class FindCursor<T extends Document = AnyDocument> {
+export class FindCursor<T extends object = Record<string, unknown>> {
   #sort?: Sort
   #skip = 0
   #limit?: number
@@ -472,7 +458,7 @@ export class FindCursor<T extends Document = AnyDocument> {
     cursor.#skip = this.#skip
     cursor.#limit = this.#limit
     cursor.#mapper = mapper
-    return cursor as unknown as FindCursor<R & Document>
+    return cursor as unknown as FindCursor<R & object>
   }
 
   async toArray(): Promise<T[]> {
@@ -530,19 +516,5 @@ export class FindCursor<T extends Document = AnyDocument> {
 
     this.#buffer = cursor.all()
     return this.#buffer
-  }
-}
-
-export class AggregationCursor<T extends Document = AnyDocument> {
-  constructor(
-    private readonly documents: Document[],
-    private readonly pipeline: Document[],
-    private readonly db: MockMongoDb,
-  ) {}
-
-  async toArray() {
-    return clone(mingo.aggregate(this.documents as never, this.pipeline as never, {
-      collectionResolver: name => this.db.getCollectionData(name),
-    }) as T[])
   }
 }

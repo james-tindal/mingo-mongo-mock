@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { MockMongoDb } from '.'
 
-function mockDb(data: Record<string, Document[]>) {
+function mockDb(data: Record<string, object[]>) {
   const db = new MockMongoDb()
   for (const [name, documents] of Object.entries(data))
     db.setCollectionData(name, documents)
@@ -363,10 +363,10 @@ describe('mingo mongo mock', () => {
     expect(await cursor.next()).toMatchObject({ _id: 1 })
 
     const seen: unknown[] = []
-    await cursor.forEach((user: any) => seen.push(user._id))
+    await cursor.forEach(user => seen.push(user._id))
     expect(seen).toEqual([2])
 
-    const mapped = await db.collection('users').find().map((user: any) => user._id).toArray()
+    const mapped = await db.collection('users').find().map(user => user._id).toArray()
     expect(mapped).toEqual([1, 2])
 
     await expect(db.collection('users').find().close()).resolves.toBeUndefined()
