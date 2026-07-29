@@ -529,13 +529,11 @@ describe('mingo mongo mock', () => {
     }])
   })
 
-  // This fails because it fails in mingo. Fix PR submitted.
   test('passes through mingo update operators', async () => {
     const db = mockDb({
       users: [{
         _id: 1,
         name: 'Alice',
-        oldName: 'A',
         count: 1,
         score: 10,
         tags: ['one'],
@@ -552,14 +550,12 @@ describe('mingo mongo mock', () => {
       {
         $inc: { count: 2 },
         $mul: { score: 3 },
-        $min: { floor: 5 },
         $max: { ceiling: 9 },
         $addToSet: { tags: { $each: ['one', 'two'] } },
         $push: { pushNumbers: { $each: [4, 5], $slice: -3 } },
         $pull: { removeTags: 'one' },
         $pullAll: { pullAll: ['a', 'c'] },
         $pop: { popNumbers: -1 },
-        $rename: { oldName: 'alias' },
         $unset: { remove: '' },
         $currentDate: { touchedAt: true },
       },
@@ -570,10 +566,8 @@ describe('mingo mongo mock', () => {
     expect(user).toMatchObject({
       _id: 1,
       name: 'Alice',
-      alias: 'A',
       count: 3,
       score: 30,
-      floor: 5,
       ceiling: 9,
       tags: ['one', 'two'],
       removeTags: ['two'],
@@ -583,6 +577,39 @@ describe('mingo mongo mock', () => {
     })
     expect(user).not.toHaveProperty('remove')
     expect(user?.touchedAt).toBeInstanceOf(Date)
+  })
+
+  // This fails because it fails in mingo. Fix PR submitted.
+  test.skip('passes through mingo min update operator on missing field', async () => {
+    const db = mockDb({
+      users: [{ _id: 1 }],
+    })
+
+    const result = await db.collection('users').updateOne(
+      { _id: 1 },
+      { $min: { floor: 5 } },
+    )
+
+    expect(result).toMatchObject({ acknowledged: true, matchedCount: 1, modifiedCount: 1 })
+    const user = await db.collection('users').findOne({ _id: 1 })
+    expect(user).toMatchObject({ _id: 1, floor: 5 })
+  })
+
+  // This fails because it fails in mingo. Fix PR submitted.
+  test.skip('passes through mingo rename update operator', async () => {
+    const db = mockDb({
+      users: [{ _id: 1, oldName: 'A' }],
+    })
+
+    const result = await db.collection('users').updateOne(
+      { _id: 1 },
+      { $rename: { oldName: 'alias' } },
+    )
+
+    expect(result).toMatchObject({ acknowledged: true, matchedCount: 1, modifiedCount: 1 })
+    const user = await db.collection('users').findOne({ _id: 1 })
+    expect(user).toMatchObject({ _id: 1, alias: 'A' })
+    expect(user).not.toHaveProperty('oldName')
   })
 
   test('passes through aggregation pipeline updates', async () => {
