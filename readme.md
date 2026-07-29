@@ -4,7 +4,7 @@ MongoDB-driver-shaped mock database for in-process JavaScript objects, powered b
 
 Use this in tests when application code expects MongoDB-style collections, cursors, filters, updates, and aggregation pipelines, but you want the data to live in plain JavaScript objects in the same Node process.
 
-Query, projection, aggregation, and update semantics are delegated to mingo where possible. This is not a MongoDB server emulator.
+Query, projection, aggregation, and update semantics are delegated to mingo where possible.
 
 ## Install
 
@@ -123,11 +123,7 @@ new MockMongoDb()
 ## Notes
 
 - Mongo query, projection, aggregation, and update operator behavior comes from mingo.
-- `ObjectId` comes from the official `mongodb` package.
-- Query results are cloned so mutating returned objects does not mutate stored documents.
-- This package is intended for tests, not production persistence.
-
-Known boundary: `mingo@7.2.2` currently has a `$rename` update bug; a fix PR has been submitted upstream.
+- Known boundary: `mingo@7.2.2` currently has a `$rename` update bug; a fix PR has been submitted upstream.
 
 ## Development
 
@@ -138,7 +134,3 @@ pnpm test
 pnpm build
 pnpm pack --dry-run
 ```
-
-## License
-
-MIT
