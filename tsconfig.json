@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "lib": ["ESNext"],
+    "types": ["node"],
     "module": "preserve",
     "moduleResolution": "bundler",
     "strict": true,
@@ -8,5 +10,5 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "exclude": ["dist"],
 }
