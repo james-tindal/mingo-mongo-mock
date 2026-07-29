@@ -18,6 +18,8 @@
   },
   "files": [
     "dist",
+    "src",
+    "!src/**/*.test.ts",
     "readme.md"
   ],
   "sideEffects": false,
@@ -31,7 +33,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build": "tsdown",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "prepack": "npm run build"
@@ -42,6 +44,7 @@
     "mongodb": "^7.5.0"
   },
   "devDependencies": {
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
