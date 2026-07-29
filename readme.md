@@ -124,13 +124,3 @@ new MockMongoDb()
 
 - Mongo query, projection, aggregation, and update operator behavior comes from mingo.
 - Known boundary: `mingo@7.2.2` currently has a `$rename` update bug; a fix PR has been submitted upstream.
-
-## Development
-
-```sh
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm pack --dry-run
-```
