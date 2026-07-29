@@ -123,6 +123,23 @@ function updateResult(result: { matchedCount: number; modifiedCount: number }): 
   }
 }
 
+function updateWithoutSetOnInsert(update: Update): Update {
+  if (Array.isArray(update) || !Object.hasOwn(update, '$setOnInsert'))
+    return update
+
+  const { $setOnInsert, ...rest } = update as Record<string, unknown>
+  return rest
+}
+
+function applyMinMissingFields(document: object, update: Update) {
+  if (Array.isArray(update) || !Object.hasOwn(update, '$min'))
+    return
+
+  for (const [key, value] of Object.entries((update as { $min?: object }).$min ?? {}))
+    if (getByPath(document, key) === undefined)
+      setByPath(document, key, clone(value))
+}
+
 function createUpsertDocument<T extends object>(filter: Filter<T>, update: Update): T {
   const document: object = {}
 
@@ -139,11 +156,14 @@ function createUpsertDocument<T extends object>(filter: Filter<T>, update: Updat
   const isModifier = modifierKeys.some(key => key.startsWith('$'))
   if (isModifier) {
     const setOnInsert = (update as { $setOnInsert?: object }).$setOnInsert ?? {}
-    const set = (update as { $set?: object }).$set ?? {}
     for (const [key, value] of Object.entries(setOnInsert))
       setByPath(document, key, clone(value))
-    for (const [key, value] of Object.entries(set))
-      setByPath(document, key, clone(value))
+
+    const updateToApply = updateWithoutSetOnInsert(update)
+    applyMinMissingFields(document, updateToApply)
+    if (Object.keys(updateToApply).length > 0)
+      mingo.updateOne([document] as never, {} as never, updateToApply as never)
+
     return ensureId(document as T)
   }
 
@@ -261,7 +281,8 @@ export class MockCollection<T extends object = Record<string, unknown>> {
   }
 
   async updateOne(filter: Filter<T>, update: Update, options: WriteOptions = {}): Promise<UpdateResult> {
-    const result = mingo.updateOne(this.documents as never, filter as never, update as never, {
+    const updateToApply = updateWithoutSetOnInsert(update)
+    const result = mingo.updateOne(this.documents as never, filter as never, updateToApply as never, {
       arrayFilters: options.arrayFilters,
       sort: options.sort,
     } as never)
@@ -282,10 +303,25 @@ export class MockCollection<T extends object = Record<string, unknown>> {
     return updateResult(result)
   }
 
-  async updateMany(filter: Filter<T>, update: Update, options: Pick<WriteOptions, 'arrayFilters'> = {}): Promise<UpdateResult> {
-    const result = mingo.updateMany(this.documents as never, filter as never, update as never, {
+  async updateMany(filter: Filter<T>, update: Update, options: Pick<WriteOptions, 'arrayFilters' | 'upsert'> = {}): Promise<UpdateResult> {
+    const updateToApply = updateWithoutSetOnInsert(update)
+    const result = mingo.updateMany(this.documents as never, filter as never, updateToApply as never, {
       arrayFilters: options.arrayFilters,
     } as never)
+
+    if (result.matchedCount === 0 && options.upsert) {
+      const document = createUpsertDocument<T>(filter, update)
+      this.assertNoUniqueIndexViolation(document)
+      this.documents.push(document)
+      return {
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 0,
+        upsertedCount: 1,
+        upsertedId: (document as { _id: unknown })._id,
+      }
+    }
+
     return updateResult(result)
   }
 

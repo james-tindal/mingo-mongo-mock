@@ -152,6 +152,159 @@ describe('mingo mongo mock', () => {
     expect(await users.findOne({ email: 'alice@example.com' })).toMatchObject({ name: 'Alice' })
   })
 
+  test('applies update operators when creating an upsert document', async () => {
+    const db = new MockMongoDb()
+    const users = db.collection('users')
+
+    const result = await users.updateOne(
+      { email: 'alice@example.com' },
+      {
+        $setOnInsert: { created: true },
+        $set: { name: 'Alice' },
+        $inc: { count: 2 },
+        $mul: { multiplier: 3 },
+        $min: { floor: 5 },
+        $max: { ceiling: 9 },
+        $currentDate: { touchedAt: true },
+        $addToSet: { tags: { $each: ['one', 'two'] } },
+        $push: { numbers: { $each: [1, 2] } },
+        $unset: { missingUnset: '' },
+        $pop: { missingPop: 1 },
+        $pull: { missingPull: 'x' },
+        $pullAll: { missingPullAll: ['x'] },
+        $rename: { missingOldName: 'alias' },
+      },
+      { upsert: true },
+    )
+
+    expect(result).toMatchObject({
+      acknowledged: true,
+      matchedCount: 0,
+      modifiedCount: 0,
+      upsertedCount: 1,
+    })
+
+    const user = await users.findOne({ email: 'alice@example.com' })
+    expect(user).toMatchObject({
+      email: 'alice@example.com',
+      created: true,
+      name: 'Alice',
+      count: 2,
+      multiplier: 0,
+      floor: 5,
+      ceiling: 9,
+      tags: ['one', 'two'],
+      numbers: [1, 2],
+    })
+    expect(user?.touchedAt).toBeInstanceOf(Date)
+    expect(user).not.toHaveProperty('missingUnset')
+    expect(user).not.toHaveProperty('missingPop')
+    expect(user).not.toHaveProperty('missingPull')
+    expect(user).not.toHaveProperty('missingPullAll')
+    expect(user).not.toHaveProperty('alias')
+  })
+
+  test('ignores setOnInsert when an upsert matches an existing document', async () => {
+    const db = mockDb({
+      users: [{ _id: 1, name: 'Alice' }],
+    })
+    const users = db.collection('users')
+
+    const result = await users.updateOne(
+      { _id: 1 },
+      {
+        $setOnInsert: { created: true },
+        $set: { name: 'Alice Updated' },
+      },
+      { upsert: true },
+    )
+
+    expect(result).toMatchObject({ acknowledged: true, matchedCount: 1, modifiedCount: 1 })
+    const user = await users.findOne({ _id: 1 })
+    expect(user).toMatchObject({ _id: 1, name: 'Alice Updated' })
+    expect(user).not.toHaveProperty('created')
+  })
+
+  test('applies update operators when updateMany creates an upsert document', async () => {
+    const db = new MockMongoDb()
+    const users = db.collection('users')
+
+    const result = await users.updateMany(
+      { email: 'alice@example.com' },
+      {
+        $setOnInsert: { created: true },
+        $set: { name: 'Alice' },
+        $inc: { count: 2 },
+        $mul: { multiplier: 3 },
+        $min: { floor: 5 },
+        $max: { ceiling: 9 },
+        $currentDate: { touchedAt: true },
+        $addToSet: { tags: { $each: ['one', 'two'] } },
+        $push: { numbers: { $each: [1, 2] } },
+        $unset: { missingUnset: '' },
+        $pop: { missingPop: 1 },
+        $pull: { missingPull: 'x' },
+        $pullAll: { missingPullAll: ['x'] },
+        $rename: { missingOldName: 'alias' },
+      },
+      { upsert: true },
+    )
+
+    expect(result).toMatchObject({
+      acknowledged: true,
+      matchedCount: 0,
+      modifiedCount: 0,
+      upsertedCount: 1,
+    })
+
+    const user = await users.findOne({ email: 'alice@example.com' })
+    expect(user).toMatchObject({
+      email: 'alice@example.com',
+      created: true,
+      name: 'Alice',
+      count: 2,
+      multiplier: 0,
+      floor: 5,
+      ceiling: 9,
+      tags: ['one', 'two'],
+      numbers: [1, 2],
+    })
+    expect(user?.touchedAt).toBeInstanceOf(Date)
+    expect(user).not.toHaveProperty('missingUnset')
+    expect(user).not.toHaveProperty('missingPop')
+    expect(user).not.toHaveProperty('missingPull')
+    expect(user).not.toHaveProperty('missingPullAll')
+    expect(user).not.toHaveProperty('alias')
+  })
+
+  test('ignores setOnInsert when an updateMany upsert matches existing documents', async () => {
+    const db = mockDb({
+      users: [
+        { _id: 1, team: 'red', name: 'Alice' },
+        { _id: 2, team: 'red', name: 'Bob' },
+        { _id: 3, team: 'blue', name: 'Carol' },
+      ],
+    })
+    const users = db.collection('users')
+
+    const result = await users.updateMany(
+      { team: 'red' },
+      {
+        $setOnInsert: { created: true },
+        $set: { active: true },
+      },
+      { upsert: true },
+    )
+
+    expect(result).toMatchObject({ acknowledged: true, matchedCount: 2, modifiedCount: 2 })
+    await expect(users.find({ team: 'red' }).sort({ _id: 1 }).toArray()).resolves.toMatchObject([
+      { _id: 1, team: 'red', name: 'Alice', active: true },
+      { _id: 2, team: 'red', name: 'Bob', active: true },
+    ])
+    await expect(users.findOne({ _id: 1 })).resolves.not.toHaveProperty('created')
+    await expect(users.findOne({ _id: 2 })).resolves.not.toHaveProperty('created')
+  })
+
   test('supports replaceOne', async () => {
     const db = mockDb({
       users: [{ _id: 1, name: 'Alice', stale: true }],
@@ -311,6 +464,72 @@ describe('mingo mongo mock', () => {
       { $set: { name: 'Bob' } },
       { returnDocument: 'after', upsert: true },
     )).resolves.toMatchObject({ ok: 1, value: { email: 'bob@example.com', name: 'Bob' } })
+  })
+
+  test('applies update operators when findOneAndUpdate creates an upsert document', async () => {
+    const db = new MockMongoDb()
+    const users = db.collection('users')
+
+    const result = await users.findOneAndUpdate(
+      { email: 'alice@example.com' },
+      {
+        $setOnInsert: { created: true },
+        $set: { name: 'Alice' },
+        $inc: { count: 2 },
+        $mul: { multiplier: 3 },
+        $min: { floor: 5 },
+        $max: { ceiling: 9 },
+        $currentDate: { touchedAt: true },
+        $addToSet: { tags: { $each: ['one', 'two'] } },
+        $push: { numbers: { $each: [1, 2] } },
+        $unset: { missingUnset: '' },
+        $pop: { missingPop: 1 },
+        $pull: { missingPull: 'x' },
+        $pullAll: { missingPullAll: ['x'] },
+        $rename: { missingOldName: 'alias' },
+      },
+      { returnDocument: 'after', upsert: true },
+    )
+
+    expect(result).toMatchObject({
+      ok: 1,
+      value: {
+        email: 'alice@example.com',
+        created: true,
+        name: 'Alice',
+        count: 2,
+        multiplier: 0,
+        floor: 5,
+        ceiling: 9,
+        tags: ['one', 'two'],
+        numbers: [1, 2],
+      },
+    })
+    expect(result.value?.touchedAt).toBeInstanceOf(Date)
+    expect(result.value).not.toHaveProperty('missingUnset')
+    expect(result.value).not.toHaveProperty('missingPop')
+    expect(result.value).not.toHaveProperty('missingPull')
+    expect(result.value).not.toHaveProperty('missingPullAll')
+    expect(result.value).not.toHaveProperty('alias')
+  })
+
+  test('ignores setOnInsert when findOneAndUpdate upsert matches an existing document', async () => {
+    const db = mockDb({
+      users: [{ _id: 1, name: 'Alice' }],
+    })
+    const users = db.collection('users')
+
+    const result = await users.findOneAndUpdate(
+      { _id: 1 },
+      {
+        $setOnInsert: { created: true },
+        $set: { name: 'Alice Updated' },
+      },
+      { returnDocument: 'after', upsert: true },
+    )
+
+    expect(result).toMatchObject({ ok: 1, value: { _id: 1, name: 'Alice Updated' } })
+    expect(result.value).not.toHaveProperty('created')
   })
 
   test('passes update options through for arrayFilters and sort', async () => {
