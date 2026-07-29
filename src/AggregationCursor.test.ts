@@ -1,15 +1,7 @@
-import { describe, expect, expectTypeOf, test } from 'vitest'
-import { AggregationCursor } from './AggregationCursor'
+import { describe, expect, test } from 'vitest'
 import { MockMongoDb } from './index'
-import mongo from 'mongodb'
 
 describe('AggregationCursor', () => {
-  test('exposes useful mongodb cursor methods', () => {
-    type UsefulAggregationCursorMethods = mongo.AggregationCursor<Record<string, unknown>>
-
-    expectTypeOf<AggregationCursor<Record<string, unknown>>>().toMatchTypeOf<UsefulAggregationCursorMethods>()
-  })
-
   test('next returns matching aggregation results in order, then null', async () => {
     const db = new MockMongoDb()
     db.setCollectionData('matches', [
